@@ -3,11 +3,13 @@ project(buddy_allocator VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_C_COMPILER clang)
+set(CMAKE_CXX_COMPILER clang++)
 
 add_executable(buddy_allocator_exec src/main.cpp)
 
 target_compile_options(buddy_allocator_exec PRIVATE
-    -m32
+    -target i386-pc-none-elf
     -ffreestanding
     -fno-exceptions
     -fno-rtti
@@ -16,7 +18,7 @@ target_compile_options(buddy_allocator_exec PRIVATE
 )
 
 target_link_options(buddy_allocator_exec PRIVATE
-    -m32
+    -target i386-pc-none-elf
     -nostdlib
     -e allocatorStart
     -Wl,--section-start=.multiboot=0x100000
