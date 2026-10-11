@@ -36,7 +36,7 @@ private:
         bool isFree;
     };
 
-    static constexpr size_t HEADER_SIZE { sizeof(BlockHeader) };
+    static constexpr size_t HEADER_SIZE { (sizeof(BlockHeader) + 7) & ~7u };
 
     std::byte* memoryStart { nullptr };
     size_t totalSize { 0 };
@@ -72,11 +72,9 @@ private:
         return manualBitWidth(size - 1);
     }
 
-    [[nodiscard]] auto getBuddy(std::byte* block, size_t blockSize) const -> std::byte*
+    [[nodiscard]] auto getBuddyOffset(size_t offset, size_t blockSize) const -> size_t
     {
-        uintptr_t offset { reinterpret_cast<uintptr_t>(block) - reinterpret_cast<uintptr_t>(memoryStart) };
-        uintptr_t buddyOffset { offset ^ blockSize };
-        return static_cast<std::byte*>(memoryStart + buddyOffset);
+        return offset ^ blockSize;
     }
 
     auto listAdd(uint8_t order, std::byte* blockPtr) -> void
@@ -122,7 +120,7 @@ public:
         header->order = maxOrder;
         header->isFree = true;
 
-        listAdd(maxOrder, memoryStart + HEADER_SIZE);
+        listAdd(maxOrder, memoryStart);
     }
 
     ~BuddyAllocator() = default;
@@ -147,9 +145,8 @@ public:
 
         if (currentOrder > maxOrder) return nullptr;
 
-        std::byte* blockPayload { reinterpret_cast<std::byte*>(freeLists[currentOrder]) };
+        std::byte* blockStart { reinterpret_cast<std::byte*>(freeLists[currentOrder]) };
         freeLists[currentOrder] = freeLists[currentOrder]->next;
-        std::byte* blockStart { blockPayload - HEADER_SIZE };
 
         while (currentOrder > targetOrder)
         {
@@ -162,13 +159,13 @@ public:
             buddyHeader->order = currentOrder;
             buddyHeader->isFree = true;
 
-            listAdd(currentOrder, buddyStart + HEADER_SIZE);
+            listAdd(currentOrder, buddyStart);
         }
 
         auto* header { reinterpret_cast<BlockHeader*>(blockStart) };
         header->order = targetOrder;
         header->isFree = false;
-        return blockPayload;
+        return blockStart + HEADER_SIZE;
     }
 
     auto deallocate(void* ptr) -> void
@@ -185,7 +182,10 @@ public:
         while (currentOrder < maxOrder)
         {
             size_t blockSize { orderToSize(currentOrder) };
-            std::byte* buddyStart { getBuddy(blockStart, blockSize) };
+            size_t offset { static_cast<size_t>(blockStart - memoryStart) };
+            size_t buddyOffset { getBuddyOffset(offset, blockSize) };
+            if (buddyOffset >= totalSize) break;
+            std::byte* buddyStart { memoryStart + buddyOffset };
             auto* buddyHeader { reinterpret_cast<BlockHeader*>(buddyStart) };
             
             if (!buddyHeader->isFree || buddyHeader->order != currentOrder)
@@ -209,7 +209,7 @@ public:
             mergedHeader->order = currentOrder;
         }
 
-        listAdd(currentOrder, blockStart + HEADER_SIZE);
+        listAdd(currentOrder, blockStart);
     }
 
     [[nodiscard]] explicit operator bool() const
