@@ -1,7 +1,7 @@
 // src/main.cpp
 
-#include <cstdint>
-#include <cstddef>
+#include <stdint.h>
+#include <stddef.h>
 
 [[maybe_unused]] static constexpr int MULTIBOOT_SEARCH { 8192 };
 static constexpr uint32_t MULTIBOOT_HEADER_MAGIC { 0x1BADB002 };
@@ -14,6 +14,10 @@ struct MultibootHeader
     uint32_t flags;
     uint32_t checksum;
 };
+
+namespace helper {
+    enum class byte : unsigned char {};
+}
 
 [[gnu::section(".multiboot"), gnu::used, gnu::aligned(4)]]
 const MultibootHeader multiboot_header = {
@@ -38,7 +42,7 @@ private:
 
     static constexpr size_t HEADER_SIZE { (sizeof(BlockHeader) + 7) & ~7u };
 
-    std::byte* memoryStart { nullptr };
+    helper::byte* memoryStart { nullptr };
     size_t totalSize { 0 };
     uint8_t minOrder { 0 };
     uint8_t maxOrder { 0 };
@@ -77,19 +81,19 @@ private:
         return offset ^ blockSize;
     }
 
-    auto listAdd(uint8_t order, std::byte* blockPtr) -> void
+    auto listAdd(uint8_t order, helper::byte* blockPtr) -> void
     {
         auto* freeNode { reinterpret_cast<FreeBlock*>(blockPtr) };
         freeNode->next = freeLists[order];
         freeLists[order] = freeNode;
     }
 
-    auto listRemove(uint8_t order, std::byte* blockPtr) -> bool
+    auto listRemove(uint8_t order, helper::byte* blockPtr) -> bool
     {
         FreeBlock** current { &freeLists[order] };
         while (*current)
         {
-            if (reinterpret_cast<std::byte*>(*current) == blockPtr)
+            if (reinterpret_cast<helper::byte*>(*current) == blockPtr)
             {
                 *current = (*current)->next;
                 return true;
@@ -105,7 +109,7 @@ public:
         if (!manualHasSingleBit(poolSize) || !manualHasSingleBit(minBlockSize)) return;
         if (minBlockSize < sizeof(FreeBlock) || !rawMemory || !trackingBuffer) return;
 
-        memoryStart = static_cast<std::byte*>(rawMemory);
+        memoryStart = static_cast<helper::byte*>(rawMemory);
         totalSize = poolSize;
         maxOrder = static_cast<uint8_t>(manualBitWidth(poolSize - 1));
         minOrder = static_cast<uint8_t>(manualBitWidth(minBlockSize - 1));
@@ -145,7 +149,7 @@ public:
 
         if (currentOrder > maxOrder) return nullptr;
 
-        std::byte* blockStart { reinterpret_cast<std::byte*>(freeLists[currentOrder]) };
+        helper::byte* blockStart { reinterpret_cast<helper::byte*>(freeLists[currentOrder]) };
         freeLists[currentOrder] = freeLists[currentOrder]->next;
 
         while (currentOrder > targetOrder)
@@ -153,7 +157,7 @@ public:
             currentOrder--;
             size_t halfSize { orderToSize(currentOrder) };
 
-            std::byte* buddyStart { blockStart + halfSize };
+            helper::byte* buddyStart { blockStart + halfSize };
             auto* buddyHeader { reinterpret_cast<BlockHeader*>(buddyStart) };
 
             buddyHeader->order = currentOrder;
@@ -172,8 +176,8 @@ public:
     {
         if (!ptr || !freeLists) return;
 
-        std::byte* blockPayload { static_cast<std::byte*>(ptr) };
-        std::byte* blockStart { blockPayload - HEADER_SIZE };
+        helper::byte* blockPayload { static_cast<helper::byte*>(ptr) };
+        helper::byte* blockStart { blockPayload - HEADER_SIZE };
         auto* header { reinterpret_cast<BlockHeader*>(blockStart) };
 
         header->isFree = true;
@@ -185,7 +189,7 @@ public:
             size_t offset { static_cast<size_t>(blockStart - memoryStart) };
             size_t buddyOffset { getBuddyOffset(offset, blockSize) };
             if (buddyOffset >= totalSize) break;
-            std::byte* buddyStart { memoryStart + buddyOffset };
+            helper::byte* buddyStart { memoryStart + buddyOffset };
             auto* buddyHeader { reinterpret_cast<BlockHeader*>(buddyStart) };
             
             if (!buddyHeader->isFree || buddyHeader->order != currentOrder)
@@ -218,7 +222,7 @@ public:
     }
 };
 
-alignas(16) static std::byte rawMemoryPool[1024 * 1024];
+alignas(16) static helper::byte rawMemoryPool[1024 * 1024];
 static void* allocatorTrackingBuffer[21];
 
 extern "C" auto allocatorStart() -> void
